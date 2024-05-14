@@ -1,0 +1,437 @@
+---
+title: "Applied Time Series project"
+output: html_document
+date: "2024-04-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this presentation, we will embark on an analytical journey through the realm of financial time series, focusing on the illustrious case of Microsoft Corporation (MSFT). Our primary objective is to harness the power of time series analysis to predict MSFT's stock price, a goal rooted in both its academic intrigue and practical significance in the financial world.
+\
+The ability to predict stock prices holds immense value, offering insights into potential future market movements and guiding investment strategies. It encapsulates a blend of quantitative analysis, data science, and financial theory, aimed at deciphering the patterns and signals embedded within historical stock prices. Our exploration into MSFT's stock price prediction is not just an academic exercise but a step towards understanding the dynamics of financial markets and enhancing decision-making processes.
+\
+Within the broader scope of my analysis lies a fascinating hypothesis: the introduction of MS Copilot has acted as a catalyst, propelling MSFT's stock prices to new heights. MS Copilot represents a groundbreaking advancement, showcasing Microsoft's innovation and its impact on productivity, efficiency, and technological evolution. This hypothesis stems from the belief that significant product launches and technological milestones can have profound effects on a company's market valuation and investor perception.
+
+```{r}
+library(quantmod)
+library(xts)
+MSFT <- read.csv(file = "MSFT.csv", row.names = 1, header = TRUE)
+
+# Printing data
+tail(MSFT[,1:5])
+```
+```{r}
+MSFT_xts <- xts(MSFT[, 1:5], order.by=as.POSIXct(MSFT$date))
+chartSeries(MSFT_xts[,4], theme="white", up.col="blue", major.tick="months", name="MSFT - Closing price")
+
+```
+\
+- Overall Trend: The plot reveals a clear upward trend, indicating that MSFT's market value has generally been increasing over this 2.5-year period. This could suggest strong company performance and investor confidence.\
+- Volatility and Market Events: While the trend is upward, there are noticeable fluctuations that could correspond to market events, quarterly earnings reports, or broader economic changes. For instance, any sharp declines could potentially coincide with market-wide sell-offs or poor earnings results, whereas sharp increases might be related to positive news or financial reports.\
+- Last Recorded Price: The last observed price, as annotated on the chart, is approximately $257.24. This price point is crucial for understanding the most recent market valuation and can serve as a benchmark for current analysis.\
+- Market Dynamics: Discuss the significant rise in stock price, particularly from mid-2019 to early 2020, and a more variable pattern thereafter. This could be further analyzed in the context of the company's operational achievements or external factors.\
+- Investor Perspective: From an investor's standpoint, the steady increase may be seen as a positive sign of growth and could be compared to the performance of other stocks in the technology sector or a relevant index like the S&P 500 for benchmarking.\
+- Analytical Observations: Note any patterns that might be of interest for technical analysis, such as periods of consolidation or patterns that traders might use to predict future movements.\
+
+
+
+```{r}
+MSFT_xts.retDaily <- periodReturn(MSFT_xts, period = "daily")
+MSFT_xts.retWeekly <- periodReturn(MSFT_xts, period = "weekly")
+MSFT_xts.retMonthly <- periodReturn(MSFT_xts, period = "monthly")
+MSFT_xts.retQuarterly <- periodReturn(MSFT_xts, period = "quarterly")
+MSFT_xts.retYearly <- periodReturn(MSFT_xts, period = "yearly")
+```
+
+```{r echo=FALSE}
+par(mfrow = c(2, 2))
+chartSeries(MSFT_xts.retDaily, theme = "white", up.col="blue", name = "MSFT - Daily returns")
+chartSeries(MSFT_xts.retWeekly, theme = "white", up.col="blue", name = "MSFT - Weekly returns")
+chartSeries(MSFT_xts.retMonthly, theme = "white", up.col="blue", name = "MSFT - Montly returns")
+chartSeries(MSFT_xts.retQuarterly, theme = "white", up.col="blue", name = "MSFT - Quarterly returns")
+```
+
+
+```{r}
+summary(MSFT_xts.retDaily)
+```
+
+```{r}
+library(fBasics)
+library(np)
+normalTest(MSFT_xts.retDaily,method='jb')
+```
+\
+The Jarque-Bera test result with a large chi-squared statistic and a p-value less than 2.2e-16 strongly rejects the null hypothesis of normality, indicating that the daily returns of MSFT stock do not follow a normal distribution.
+
+
+```{r}
+hist(MSFT_xts.retDaily, nclass=35)
+```
+
+```{r}
+train_dataset_range <- '2019::2020'
+test_dataset_range <- '2021::'
+```
+
+```{r}
+original_set <- ts(as.numeric(MSFT_xts.retDaily))
+training_set <- ts(as.numeric(MSFT_xts.retDaily[train_dataset_range]), frequency = 252, start=c(2019, 1))
+testing_set <- ts(as.numeric(MSFT_xts.retDaily[test_dataset_range]), frequency = 252, start=c(2021, 1))
+```
+
+```{r}
+size <- length(original_set)
+training_set_size <- length(training_set)
+testing_set_size <- length(testing_set)
+```
+
+```{r}
+acf_plot <- acf(original_set, lag=60, plot = FALSE)
+pacf_plot <- pacf(original_set, lag=60, plot = FALSE)
+```
+
+
+
+```{r}
+plot(acf_plot, main = "ACF (60 lags)")
+plot(pacf_plot, main = "PACF (60 lags)")
+```
+\
+- The ACF plot displays no significant autocorrelation, with all lags falling within the confidence bounds, indicating a random series.\
+- The PACF plot also suggests a lack of autoregressive influences, with lags lying within the confidence interval.\
+- Neither plot shows evidence of seasonality or trend components that would require differencing or seasonal adjustment.\
+- Data may be modeled as a white noise process, implying that future values are not predictable based on past values.\
+- These findings could inform model selection, suggesting simpler models may be adequate for forecasting.\
+\
+```{r}
+library(ggplot2)
+original_set <- ts(as.numeric(MSFT_xts.retDaily), frequency = 252, start=c(2019, 1))
+plot(decompose(original_set))
+```
+\
+## The time series decomposition plot shows that:\
+
+- The original data is relatively stable over time, without clear trends or seasonality.\
+- The trend component varies slightly but generally remains close to a constant mean, indicating little long-term trend in the data.\
+- The seasonal plot does not display a consistent pattern, suggesting seasonality is not a significant factor in this series.\
+- The remainder (residuals) component exhibits random fluctuations, which is characteristic of a white noise process.\
+- Overall, the data appears to be mostly random with minor, non-systematic fluctuations in the trend and seasonal components.\
+\
+
+```{r}
+library(tseries)
+adf.test(original_set)
+```
+\
+The Augmented Dickey-Fuller test result indicates a test statistic of -7.7461 and a p-value of 0.01, which strongly suggests that the time series 'original_set' is stationary.\
+
+```{r}
+max_p = 12
+max_q = 12
+
+# first column for AR models, second for MA, third for ARMA
+bic=matrix(0L, nrow=max(max_p, max_q), ncol=3) 
+aic=matrix(0L, nrow=max(max_p, max_q), ncol=3)
+
+jar <-1
+for (jar in 1:max_p) {
+  temp <- arima(training_set, order = c(jar,0,0)) 
+  aic[jar,1]<-temp$aic
+  bic[jar,1]<-BIC(temp) # there is no in-build BIC result, so we need to call the BIC function
+}
+
+jma <-1
+for (jma in 1:max_q) {
+  temp <- arima(training_set, order = c(0,0,jma)) 
+  aic[jma,2]<-temp$aic
+  bic[jma,2]<-BIC(temp) # there is no in-build BIC result, so we need to call the BIC function
+}
+
+
+jar <-1
+jma <-1
+jtick<-0
+for (jar in 1:4) {
+  for (jma in 1:3) {
+  temp <- arima(training_set, order = c(jar,0,jma))
+  jtick<-jtick+1 
+  aic[jtick,3]<-temp$aic
+  bic[jtick,3]<-BIC(temp) # there is no in-build BIC result, so we need to call the BIC function
+  }
+}
+```
+
+```{r}
+ic <- cbind(aic, bic)
+colnames(ic) <- c("AIC (AR)", "AIC(MA)", "AIC(ARMA)", "BIC (AR)", "BIC(MA)", "BIC(ARMA)")
+rownames(ic) <- c(
+  "1. AR(1), MA(1), ARMA(1,1)",
+  "2. AR(2), MA(2), ARMA(1,2)",
+  "3. AR(3), MA(3), ARMA(1,3)",
+  "4. AR(4), MA(4), ARMA(2,1)",
+  "5. AR(5), MA(5), ARMA(2,2)",
+  "6. AR(6), MA(6), ARMA(2,3)",
+  "7. AR(7), MA(7), ARMA(3,1)",
+  "8. AR(8), MA(8), ARMA(3,2)",
+  "9. AR(9), MA(9), ARMA(3,3)",
+  "10. AR(10), MA(10), ARMA(4,1)",
+  "11. AR(11), MA(11), ARMA(4,2)",
+  "12. AR(12), MA(12), ARMA(4,3)"
+  )
+```
+
+```{r}
+knitr::kable(ic)
+```
+\
+Here's a table that lists the results of fitting different ARMA (Autoregressive Moving Average) models to a dataset. For each model, it shows the Akaike Information Criterion (AIC) and Bayesian Information Criterion (BIC) values for the AR (Autoregressive), MA (Moving Average), and combined ARMA components.\
+
+- Models Compared: It compares 12 different models, each with increasing order of AR and MA components. For example, AR(1), MA(1) for the first model, up to AR(12), MA(12) for the twelfth model.\
+- Criteria for Model Selection: AIC and BIC are both used to assess the quality of each model. Generally, lower values are better, indicating a more suitable model for the data.\
+- Best Model Indicator: The table is likely sorted by increasing complexity of the models. The goal is to find a model with the lowest AIC and BIC, suggesting an optimal balance between model fit and complexity.\
+- Optimal Model: Without the specific values being legible, one would typically look for the model(s) with the lowest AIC and BIC values to identify the best-fitting model.\
+- AIC vs. BIC: The AIC tends to favor more complex models (lower penalties for additional parameters) than the BIC, which penalizes complexity more strongly. This difference might lead to different models being selected based on the criterion used.\
+
+
+
+
+```{r}
+matplot(aic[1:max(max_p, max_q),],type='l', main="AIC score", xlab="Model order", ylab="AIC score")
+legend("bottomleft", inset=0.01, legend=c("AR", "MA", "ARMA"), col=c(1:5),pch=15:19, bg= ("white"), horiz=F)
+matplot(bic[1:max(max_p, max_q),],type='l', main="BIC score", xlab="Model order", ylab="BIC score")
+legend("bottomleft", inset=0.01, legend=c("AR", "MA", "ARMA"), col=c(1:5),pch=15:19, bg= ("white"), horiz=F)
+```
+\
+## For the AIC score plot:
+
+- The AR model's AIC score decreases with model complexity, suggesting improved fit up to a certain point.\
+- The MA and ARMA models' AIC scores fluctuate, with the ARMA model generally showing lower (better) scores.\
+- The lowest AIC score seems to be for an ARMA model of order around 6 or 7, which may indicate the best balance between model complexity and fit.\
+
+## For the BIC score plot:
+
+- The AR model's BIC score initially drops but then starts to increase with model order, indicating overfitting beyond a certain complexity.\
+- The MA model's BIC score varies significantly with different orders, not showing a clear pattern.\
+- The ARMA model's BIC scores show volatility but suggest that a model of lower order may be more appropriate as higher order models have higher BIC scores, reflecting a penalty for complexity.\
+
+
+
+```{r}
+arma23 <- arima(training_set, order = c(2,0,3))
+print(arma23)
+```
+\
+This output summarizes the results from an ARIMA(2,0,3) model applied to a dataset named training_set. The estimated coefficients for the AR terms are -1.7595 and -0.9016, and for the MA terms, they are 1.4584, 0.4335, and -0.1563, with a small positive intercept of 0.0018. The standard errors are relatively small, suggesting the coefficients are estimated with precision. The variance of the model's residuals (sigma^2) is very low at 0.0003705, indicating a good fit, and the log-likelihood and AIC values suggest the model is a strong candidate for capturing the patterns in the data.
+\
+
+
+```{r}
+arma33 <- arima(testing_set, order = c(3,0,3))
+print(arma33)
+
+tstatar <- arma33[["coef"]][["ar3"]]/sqrt(arma33[["var.coef"]][3,3])
+print(c("T statistics:", tstatar))
+ 
+pval=2*(1-pnorm(abs(tstatar)))
+print(c("P value:", pval))
+```
+
+
+```{r}
+acf(arma33[["residuals"]], lag=20, main = "ACF of ARMA(2,3) residuals")
+```
+\
+
+The ACF plot of ARMA(2,3) residuals indicates that there is no significant autocorrelation present in the residuals, suggesting that the ARMA(2,3) model captures the time series data well.\
+
+```{r}
+Box.test(arma33[["residuals"]], lag = 10, type =  "Ljung-Box", fitdf = 4)
+Box.test(arma33[["residuals"]], lag = 20, type =  "Ljung-Box", fitdf = 4)
+Box.test(arma33[["residuals"]], lag = 30, type =  "Ljung-Box", fitdf = 4)
+```
+
+```{r}
+library(forecast)
+auto.arima(training_set)
+```
+\
+The output indicates that an ARIMA(2,0,2) model with non-zero mean has been fitted to the training_set. The estimated coefficients for the AR terms are -1.5562 and -0.6986, and for the MA terms, they are 1.2634 and 0.3663, with a small mean of 0.0018. The model has a relatively low AIC and BIC, suggesting a good fit to the data. The standard errors of the estimates are reasonably small, indicating precision in the parameter estimates. The variance of the residuals is very low (sigma^2 = 0.0003812), and the high log-likelihood value (1273.4) also supports the model's adequacy.
+\
+
+```{r}
+H <- 110 
+T <- length(original_set) - H
+```
+
+```{r}
+msfe <- matrix(0L, nrow = 1, ncol = 4)
+
+one_period_ahead_forecast <- function(data, H, T, ar=1, i=0, ma=1){
+  
+  j <- 0
+  foroecasted <- matrix(0L, nrow = H, ncol=2)
+  
+  # Rolling scheme
+  for (j in 0:(H-1)) {
+    model <- arima(data[(1+j):(T+j)], order = c(ar, i, ma))
+    forctemp <- predict(model, 1)
+    foroecasted[j+1,1] <- forctemp$pred
+  }
+  
+  return(foroecasted)
+}
+```
+
+
+```{r}
+arma23_forecast <- one_period_ahead_forecast(original_set, H, T, 2, 0, 3)
+
+arma23_forecast[,2] <- original_set[(T+1):(T+H)]
+arma23_forecast_error <- arma23_forecast[,2] - arma23_forecast[,1]
+msfe[,1] <- (t(arma23_forecast_error)%*%arma23_forecast_error) / H
+```
+
+```{r echo=FALSE, results = FALSE}
+arma22_forecast <- one_period_ahead_forecast(original_set, H, T, 2, 0, 2)
+
+arma22_forecast[,2] <- original_set[(T+1):(T+H)]
+arma22_forecast_error <- arma22_forecast[,2] - arma22_forecast[,1]
+msfe[,2] <- (t(arma22_forecast_error)%*%arma22_forecast_error) / H
+```
+
+
+```{r}
+arma21_forecast <- one_period_ahead_forecast(original_set, H, T, 2, 0, 1)
+
+arma21_forecast[,2] <- original_set[(T+1):(T+H)]
+arma21_forecast_error <- arma21_forecast[,2] - arma21_forecast[,1]
+msfe[,3] <- (t(arma21_forecast_error)%*%arma21_forecast_error) / H
+```
+
+
+```{r echo=FALSE, results = FALSE}
+ar8_forecast <- one_period_ahead_forecast(original_set, H, T, 8, 0, 0)
+
+ar8_forecast[,2] <- original_set[(T+1):(T+H)]
+ar8_forecast_error <- ar8_forecast[,2] - ar8_forecast[,1]
+msfe[,4] <- (t(ar8_forecast_error)%*%ar8_forecast_error) / H
+```
+
+
+```{r}
+colnames(msfe) <- c("ARMA(2,3)", "ARMA(2,2)", "ARMA(2,1)", "AR(8)")
+rownames(msfe) <- c("MSFE")
+```
+
+```{r}
+knitr::kable(msfe)
+```
+\
+This table displays the Mean Squared Forecast Error (MSFE) for four different models: ARMA(2,3), ARMA(2,2), ARMA(2,1), and AR(8). The ARMA(2,2) model has the lowest MSFE (0.0002334), suggesting it provides the most accurate forecasts among the ones listed, followed closely by ARMA(2,3) and ARMA(2,1). The AR(8) model has the highest forecast error, making it the least accurate in this comparison.
+\
+```{r echo=FALSE}
+plot(arma23_forecast[,2], type="l",col="black", main="Forecasting - model comparison", xlab="Days ahead", ylab="Returns")
+lines(arma23_forecast[,1], type="l", pch=22, lty=2, col="red")
+lines(arma22_forecast[,1], type="l", pch=45, lty=8, col="blue")
+lines(arma21_forecast[,1], type="l", pch=45, lty=8, col="purple")
+lines(ar8_forecast[,1], type="l", pch=45, lty=5, col="green")
+
+par(mar=c(1,2,5,8), xpd=TRUE)
+
+legend( 
+  "topright", inset=c(-0.06, 0), text.col=c("black", "red","blue", "purple", "green"), 
+  legend=c("Test sample","ARMA(2,3)","ARMA(2,2)","ARMA(2,1)","AR(8)")
+)
+```
+\
+This plot compares the forecasted returns of different models over 100 days. The ARMA(2,3), ARMA(2,2), ARMA(2,1), and AR(8) models are plotted against the actual test sample returns. All models seem to follow the test sample's volatility to a degree, but none captures all the movements perfectly, which is common in financial time series forecasting due to market inefficiency and noise.
+\
+
+
+```{r echo=FALSE}
+plot(arma23_forecast[,2], type="l",col="black", main="Forecasting - ARMA(2,3)", xlab="Days ahead", ylab="Returns")
+lines(arma23_forecast[,1], type="l", pch=22, lty=2, col="red")
+
+par(mar=c(1,2,5,8), xpd=TRUE)
+
+legend( 
+  "topright", inset=c(-0.06, 0), text.col=c("black", "red"), 
+  legend=c("Test sample","ARMA(2,3)")
+)
+```
+
+```{r}
+library(knitr)
+
+df <- data.frame(
+  Metric = c('**AIC**', '**BIC**'),
+  ARMA_2_3 = c(-2542.072, -2512.500)
+)
+kable(df, format = "markdown", align = c('l', 'r'))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
